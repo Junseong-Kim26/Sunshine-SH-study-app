@@ -60,6 +60,21 @@ if "app_config" not in st.session_state:
     st.session_state.app_config = load_file_from_dropbox(CONFIG_FILE_PATH, is_csv=False)
 
 config = st.session_state.app_config
+
+# --- 💡 KeyError 방지: 과거 설정 파일 호환성 업데이트 로직 추가 ---
+config_updated = False
+if "reward_info" not in config:
+    config["reward_info"] = {"monthly_goal": 20, "reward_desc": "주말 스키장 가기!"}
+    config_updated = True
+if "student_info" not in config:
+    config["student_info"] = {"name": "기찡", "birthdate": "2018-04-08", "grade": "초등학교 2학년", "note": "농구와 스키를 좋아함"}
+    config_updated = True
+
+if config_updated:
+    save_file_to_dropbox(config, CONFIG_FILE_PATH, is_csv=False)
+    st.session_state.app_config = config
+# ------------------------------------------------------------------
+
 main_df = st.session_state.main_data
 
 # 3. 유틸리티 함수 (나이 계산, 연속 학습 계산)
@@ -74,14 +89,12 @@ def calculate_precise_age(birthdate_str):
 
 def calculate_streak(df):
     if df.empty: return 0
-    # 하나라도 학습한 날짜 리스트 추출
     df['is_done'] = df.apply(lambda r: any(r[c] != "선택 안 함" for c in ["영어", "수학", "한글", "책읽기 등"]), axis=1)
     done_dates = sorted([datetime.strptime(d, "%Y-%m-%d").date() for d in df[df['is_done']]['일시'].unique()], reverse=True)
     
     if not done_dates: return 0
     
     today = datetime.now().date()
-    # 마지막 학습일이 어제나 오늘이 아니면 스트릭 종료
     if (today - done_dates[0]).days > 1: return 0
     
     streak = 0
@@ -156,78 +169,4 @@ with tab1:
             pure_d = display_df.at[idx, "pure_date"]
             main_df = main_df[main_df["일시"] != pure_d]
             new_r = {"일시": pure_d, "영어": row["영어"], "수학": row["수학"], "한글": row["한글"], "비고": row["비고"]}
-            new_r["책읽기 등"] = row["책읽기 등"] if "책읽기 등" in row else display_df.at[idx, "책읽기 등"]
-            main_df = pd.concat([main_df, pd.DataFrame([new_r])], ignore_index=True)
-        st.session_state.main_data = main_df
-        save_file_to_dropbox(main_df, DATA_FILE_PATH)
-        st.success("저장이 완료되었습니다!")
-
-# 📍 2. 월별 비교 탭
-with tab2:
-    st.subheader("📊 학습 분석 및 보상 게이지")
-    
-    # [보상 게이지 시스템]
-    this_month = datetime.now().strftime("%Y-%m")
-    month_data = main_df[main_df['일시'].str.contains(this_month)]
-    done_days = month_data.apply(lambda r: any(r[c] != "선택 안 함" for c in ["영어", "수학", "한글", "책읽기 등"]), axis=1).sum()
-    
-    goal = config["reward_info"]["monthly_goal"]
-    progress = min(done_days / goal, 1.0)
-    
-    st.write(f"### 🎁 이번 달 보상: **{config['reward_info']['reward_desc']}**")
-    st.progress(progress)
-    st.write(f"현재 **{done_days}회** 완료! (목표: {goal}회까지 **{max(0, goal-done_days)}회** 남음)")
-
-    # [실선 그래프]
-    analysis_df = main_df.copy()
-    analysis_df['월'] = analysis_df['일시'].str[:7]
-    chart_data = []
-    for m in sorted(analysis_df['월'].unique()):
-        m_df = analysis_df[analysis_df['월'] == m]
-        row = {"월": m}
-        for s in ["영어", "수학", "한글", "책읽기 등"]:
-            row[s] = m_df[(m_df[s] != "선택 안 함") & (m_df[s].notna())].shape[0]
-        chart_data.append(row)
-    
-    if chart_data:
-        st.line_chart(pd.DataFrame(chart_data).set_index("월"))
-        
-    # [데이터 다운로드]
-    st.divider()
-    csv = main_df.to_csv(index=False).encode('utf-8-sig')
-    st.download_button("📥 전체 학습 데이터(CSV) 다운로드", csv, "기찡학습데이터.csv", "text/csv")
-
-# 📍 3. 정보 관리 탭
-with tab3:
-    info = config["student_info"]
-    c1, c2 = st.columns(2)
-    with c1:
-        u_name = st.text_input("이름", info["name"])
-        u_birth = st.text_input("생년월일 (YYYY-MM-DD)", info["birthdate"])
-    with c2:
-        u_grade = st.text_input("학년", info["grade"])
-        st.info(f"💡 현재 나이: {calculate_precise_age(u_birth)}")
-    u_note = st.text_area("특이사항", info["note"])
-    if st.button("학생 정보 저장"):
-        config["student_info"] = {"name": u_name, "birthdate": u_birth, "grade": u_grade, "note": u_note}
-        save_file_to_dropbox(config, CONFIG_FILE_PATH, False)
-        st.success("정보 수정 완료!")
-
-# 📍 4. 학습내용 설정 탭
-with tab4:
-    st.subheader("⚙️ 학습내용 및 보상 목표 설정")
-    col_opt, col_rew = st.columns(2)
-    with col_opt:
-        new_opts = {}
-        for s, cur in config["dropdown_options"].items():
-            val = st.text_area(f"{s} 목록 (쉼표 구분)", ", ".join([x for x in cur if x != "선택 안 함"]))
-            new_opts[s] = ["선택 안 함"] + [x.strip() for x in val.split(",") if x.strip()]
-    with col_rew:
-        new_goal = st.number_input("월간 목표 학습 횟수", value=config["reward_info"]["monthly_goal"])
-        new_desc = st.text_input("목표 달성 시 보상", value=config["reward_info"]["reward_desc"])
-    
-    if st.button("모든 설정 저장"):
-        config["dropdown_options"] = new_opts
-        config["reward_info"] = {"monthly_goal": new_goal, "reward_desc": new_desc}
-        save_file_to_dropbox(config, CONFIG_FILE_PATH, False)
-        st.success("설정이 저장되었습니다!")
+            new_r["책읽기 등"] = row["책읽기 등"] if "책
