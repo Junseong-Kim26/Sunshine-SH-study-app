@@ -55,7 +55,7 @@ def save_file_to_dropbox(data, path, is_csv=True):
     dbx.files_upload(content, path, mode=dropbox.files.WriteMode.overwrite)
 
 # 데이터 초기 로드 및 세션 상태 저장
-if "main_data" axes not in st.session_state:
+if "main_data" not in st.session_state:
     st.session_state.main_data = load_file_from_dropbox(DATA_FILE_PATH, is_csv=True)
 if "app_config" not in st.session_state:
     st.session_state.app_config = load_file_from_dropbox(CONFIG_FILE_PATH, is_csv=False)
