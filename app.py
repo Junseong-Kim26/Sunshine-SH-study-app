@@ -169,4 +169,8 @@ with tab1:
             pure_d = display_df.at[idx, "pure_date"]
             main_df = main_df[main_df["일시"] != pure_d]
             new_r = {"일시": pure_d, "영어": row["영어"], "수학": row["수학"], "한글": row["한글"], "비고": row["비고"]}
-            new_r["책읽기 등"] = row["책읽기 등"] if "책
+            new_r["책읽기 등"] = row["책읽기 등"] if "책읽기 등" in row else display_df.at[idx, "책읽기 등"]
+            main_df = pd.concat([main_df, pd.DataFrame([new_r])], ignore_index=True)
+        st.session_state.main_data = main_df
+        save_file_to_dropbox(main_df, DATA_FILE_PATH)
+        st.success("저장이 완료되었습니다!")
