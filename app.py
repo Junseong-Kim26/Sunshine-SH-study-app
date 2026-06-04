@@ -16,9 +16,9 @@ dbx = dropbox.Dropbox(DROPBOX_ACCESS_TOKEN)
 DATA_FILE_PATH = "/apps/learning_log/learning_data.csv"
 CONFIG_FILE_PATH = "/apps/learning_log/app_config.json"
 
-# [수정 1] 공휴일 자동 업데이트: 현재 연도 기준으로 과거 1년 ~ 미래 1년치 생성
+# 공휴일 무한 자동 업데이트 (연도 미지정 시 실시간 자동 계산)
 current_year = datetime.now().year
-kr_holidays = holidays.KR(years=[current_year - 1, current_year, current_year + 1])
+kr_holidays = holidays.KR()
 
 # 2. 드롭박스 데이터 로드/저장 함수
 def load_file_from_dropbox(path, is_csv=True):
