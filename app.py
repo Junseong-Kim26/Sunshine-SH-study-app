@@ -10,6 +10,7 @@
 """
 
 import json
+from io import BytesIO
 from datetime import date, datetime, timedelta
 
 import pandas as pd
@@ -177,6 +178,14 @@ def calc_age(birth: date, today: date):
     return years, months
 
 
+def to_excel_bytes(df: pd.DataFrame) -> bytes:
+    """데이터프레임을 엑셀(.xlsx) 바이트로 변환합니다."""
+    buf = BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="학습일지")
+    return buf.getvalue()
+
+
 # ======================================================================
 # 화면
 # ======================================================================
@@ -302,6 +311,46 @@ with tab1:
         wdf = pd.DataFrame(table, index=week_dates)
         wdf.index.name = "날짜"
         st.dataframe(wdf, use_container_width=True)
+
+    # 📁 데이터 백업 — 엑셀 다운로드 / 업로드
+    st.divider()
+    with st.expander("📁 데이터 백업 — 엑셀 다운로드 / 업로드"):
+        full = load_data()
+
+        st.markdown("**① 다운로드** — 전체 기록을 엑셀 파일로 내려받기")
+        st.download_button(
+            "📥 엑셀로 다운로드 (.xlsx)",
+            data=to_excel_bytes(full),
+            file_name="수현이_학습일지.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+        st.caption(f"엑셀 열 순서: {', '.join(DATA_COLUMNS)}")
+
+        st.markdown("---")
+        st.markdown("**② 업로드** — 같은 형식의 엑셀(.xlsx)로 전체 교체")
+        up = st.file_uploader("엑셀 파일 선택", type=["xlsx"], label_visibility="collapsed")
+        if up is not None:
+            try:
+                up_raw = pd.read_excel(up)
+            except Exception as e:
+                st.error(f"엑셀 파일을 읽을 수 없어요: {e}")
+            else:
+                missing = [c for c in ["날짜", "과목"] if c not in up_raw.columns]
+                if missing:
+                    st.error(
+                        f"필수 열이 없어요: {missing}. "
+                        f"위에서 다운로드한 엑셀과 같은 형식({', '.join(DATA_COLUMNS)})을 사용하세요."
+                    )
+                else:
+                    up_df = _normalize_df(up_raw)
+                    st.write(f"미리보기 — 총 **{len(up_df)}줄**. 저장하면 **기존 데이터가 모두 이 내용으로 교체**됩니다.")
+                    st.dataframe(up_df, use_container_width=True, hide_index=True)
+                    if st.button("⚠️ 이 데이터로 덮어쓰기 저장", type="primary"):
+                        if save_data(up_df):
+                            load_data.clear()
+                            st.success("업로드한 데이터로 교체되었습니다!")
+                            st.rerun()
 
 # ----------------------------------------------------------------------
 # 탭 2 : 월별 비교
